@@ -62,8 +62,8 @@ myInputFile = f'{myDirectory}items-2022-11-11-2023-02-11b.csv'
 # #####################################################################################
 # USER MODIFY: Registration Label to filter on
 # #####################################################################################
-filterChoice1 = 'Scout Registration - NASA'
-filterChoice2 = 'Scouter Registration - NASA'
+filterChoice1 = ['Scout Registration - NASA', 'Scout Registration - Mountain Bike']
+filterChoice2 = ['Scouter Registration - NASA', 'Scouter Registration - Mountain Bike']
 eventName = 'March 2023 NASA Campout'
 # filterChoice1 = 'Scout Registration - Mountain Bike'
 # filterChoice2 = 'Scouter Registration - Mountain Bike'
@@ -96,7 +96,7 @@ nameparser(df['Customer_Name'])
 # Sort by sales item and last name of customer// Create Sorted File
 # #####################################################################################
 df.sort_values(by=['Item', 'LNAME_CUST'], inplace=True, key=lambda col: col.str.lower())
-# df.to_csv(mySortedFile)
+df.to_csv(mySortedFile)
 
 # #####################################################################################
 # Now using sorted dataframe/file for the rest of the process
@@ -105,7 +105,8 @@ df.sort_values(by=['Item', 'LNAME_CUST'], inplace=True, key=lambda col: col.str.
 # #####################################################################################
 # Parse the Modifiers_Applied column // Remove whitespace // Write Scout file
 # #####################################################################################
-df = df[(df.Item == filterChoice1)]
+df = df[df['Item'].isin(filterChoice1)]
+# df = df[(df.Item == filterChoice1)]
 df[['Scout_Label', 'Attendee', 'Rank', 'Patrol', 'Drive_Status', 'Emer_Label',
     'Emer_Contact', 'Emer_Label2', 'Emer_Contact_Ph']] = df.Modifiers_Applied.str.split(",|:", expand=True, )
 df.to_csv(filteredFile2)
@@ -127,7 +128,8 @@ df2 = pd.read_csv(mySortedFile, header=0)
 # #####################################################################################
 # Parse Modifiers_Applied column // Remove whitespace //Write Scouter file
 # #####################################################################################
-df2 = df2[(df2.Item == filterChoice2)]
+df2 = df2[df2['Item'].isin(filterChoice2)]
+# df2 = df2[(df2.Item == filterChoice2)]
 df2[['Scouter_Label', 'Attendee', 'Cell_Label', 'Cell_Num', 'Drive_Status', 'Emer_Label',
      'Emer_Contact', 'Emer_Label2', 'Emer_Contact_Ph']] = df2.Modifiers_Applied.str.split(",|:", expand=True, )
 whitespace_remover(df2)
