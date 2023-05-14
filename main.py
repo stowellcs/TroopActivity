@@ -12,7 +12,7 @@ def fmt_phone_number(s):
 
 # get the cell and send it to the format function
 def extract_cell_phone_number(s):
-    phone_number_string = re.search(r'Cell phone number:\s(\d{10})', s)
+    phone_number_string = re.search(r'Cell phone number:\s([\d-]{10})', s)
     if phone_number_string:
         phone_number_start_index = s.find(phone_number_string.group(1))
         phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
@@ -39,8 +39,11 @@ def get_event(s):
 # handle names, whether they are first and last or include middle
 def split_name(s):
     name_parts = s.split()
-
-    if len(name_parts) == 2:
+    if len(name_parts) == 0:
+        first_name = None
+        middle_name = None
+        last_name = None
+    elif len(name_parts) == 2:
         first_name, last_name = name_parts
         middle_name = None
     elif len(name_parts) == 3:
@@ -52,6 +55,10 @@ def split_name(s):
 
     return pd.Series({'First Name': first_name, 'Middle Name': middle_name, 'Last Name': last_name})
 
+def parse_name(name):
+    if name:
+        first, *middle, last = name.split()
+        return pd.Series({'First Name': first, 'Middle Name': ' '.join(middle), 'Last Name': last})
 
 # find the attendee's name in the file and return it without the label
 def extract_attendee_name(s):
@@ -62,8 +69,16 @@ def extract_attendee_name(s):
     elif scouter_name:
         return scouter_name.group(1)
     else:
-        return None
+        scouter_name = re.search(r'Scouter Name:\s*(\w+)', s)
+        return scouter_name.group(1)
 
+def extract_abbrev_name(s):
+    scout_name = re.search(r'Scout Name:\s*(\w+)', s)
+    scouter_name = re.search(r'Scouter Name:\s*(\w+)', s)
+    if scout_name:
+        return scout_name.group(1)
+    else:
+        return scouter_name.group(1)
 
 # pull out the emergency contact without the label
 def extract_emergency_contact(s):
@@ -73,10 +88,13 @@ def extract_emergency_contact(s):
 
 # pull out the e-contact's phone number and send it to the phone formatter, without the label
 def extract_emergency_contact_phone_number(s):
-    phone_number_string = re.search(r'Emergency Contact Phone Number:\s*(\d{10})', s)
-    phone_number_start_index = s.find(phone_number_string.group(1))
-    phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
-    return phone_number
+    if s:
+        phone_number_string = re.search(r'Emergency Contact Phone Number:\s*([\d-]{10})', s)
+        phone_number_start_index = s.find(phone_number_string.group(1))
+        phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
+        return phone_number
+    else:
+        return "Unknown"
 
 
 # Define function to extract Driving Permission
@@ -133,15 +151,15 @@ def summarizetbl():
 # USER MODIFY: Input files defined
 # #####################################################################################
 myDirectory = 'C:/Users/chris/Downloads/'
-fileName = 'items-2023-04-20-2023-05-31'
+fileName = 'items-2023-04-20-2023-06-01'
 
 myInputFile = f'{myDirectory}{fileName}.csv'
 
-filterChoice1 = 'Ropes Course Campout - May 2023'
+filterChoice1 = 'End of Year Pool Party 2023'
 filterChoice2 = ''
 
 # eventName = 'Camp Alexander 2023'
-eventName = 'May 2023 Ropes Course'
+eventName = 'May 2023 Pool Party'
 
 # output variables to set whether you want CSV and or Excel.  Excel is formatted.
 outputTypeCSV = False
@@ -183,6 +201,7 @@ patrol_categories = ['Green Frogs', 'Cobras', 'Pedros', 'Vikings', 'Rocking Chai
 # tcase6 = ditto
 # tcase7 = 'Scouter Registration - Wilderness Survival - April 2023'
 # tcase8 = 'Scout Registration - NASA'
+# tcase9 = 'Emergency Contact: Sara Hale, Scouter Name: John Hale, Yes - driving, Cell phone number: 2144053412, Emergency Contact Phone Number: 21468-8468'
 
 # #####################################################################################
 # Logging
@@ -200,7 +219,12 @@ df = pd.read_csv(myInputFile, header=0)
 df = df.dropna(axis=1, how='all')
 df.columns = [re.sub("[ ,-]", "_", re.sub("[.,`]", "", c)) for c in df.columns]
 
+
+df['Customer_Name'] = df['Customer_Name'].fillna('Unknown')
+# df['Customer_Name'] = df['Customer_Name'].astype(str)
 df[['CustFirstName', 'CustMiddleName', 'CustLastName']] = df['Customer_Name'].apply(split_name)
+
+# df[['CustFirstName', 'CustMiddleName', 'CustLastName']] = df['Customer_Name'].apply(parse_name)
 df['Item'] = df['Item'].replace('\n', " ", regex=True)
 df['Item'] = df['Item'].apply(get_event)
 
@@ -214,9 +238,21 @@ df.sort_values(by=['Item', 'Price_Point_Name', 'CustLastName'], inplace=True,
                key=lambda col: col.str.lower())
 
 # Add new columns to dataframe using the functions
-df['Emergency Contact Phone Number'] = df['Modifiers_Applied'].apply(extract_emergency_contact_phone_number)
-df['Emergency Contact'] = df['Modifiers_Applied'].apply(extract_emergency_contact)
-df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
+try:
+    df['Emergency Contact Phone Number'] = df['Modifiers_Applied'].apply(extract_emergency_contact_phone_number)
+except:
+    df['Emergency Contact Phone Number'] = 'NA'
+
+try:
+    df['Emergency Contact'] = df['Modifiers_Applied'].apply(extract_emergency_contact)
+except:
+    df['Emergency Contact'] = 'NA'
+
+try:
+    df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
+except:
+    df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_abbrev_name)
+
 df['Driving Status'] = df['Modifiers_Applied'].apply(extract_driving_permission)
 df['Cell Phone Number'] = df['Modifiers_Applied'].apply(extract_cell_phone_number)
 df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol)
