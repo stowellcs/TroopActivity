@@ -33,7 +33,7 @@ def get_event(s):
         event_index = s.find(scouter_event_string.group(1))
         event = s[event_index:event_index + (len(s) - 23)]
         return event
-    return 'Unknown'
+    return s
 
 
 # handle names, whether they are first and last or include middle
@@ -52,13 +52,14 @@ def split_name(s):
         first_name = name_parts[0]
         middle_name = ' '.join(name_parts[1:-1])
         last_name = name_parts[-1]
-
     return pd.Series({'First Name': first_name, 'Middle Name': middle_name, 'Last Name': last_name})
+
 
 def parse_name(name):
     if name:
         first, *middle, last = name.split()
         return pd.Series({'First Name': first, 'Middle Name': ' '.join(middle), 'Last Name': last})
+
 
 # find the attendee's name in the file and return it without the label
 def extract_attendee_name(s):
@@ -69,8 +70,8 @@ def extract_attendee_name(s):
     elif scouter_name:
         return scouter_name.group(1)
     else:
-        scouter_name = re.search(r'Scouter Name:\s*(\w+)', s)
-        return scouter_name.group(1)
+        return extract_abbrev_name(s)
+
 
 def extract_abbrev_name(s):
     scout_name = re.search(r'Scout Name:\s*(\w+)', s)
@@ -80,19 +81,25 @@ def extract_abbrev_name(s):
     else:
         return scouter_name.group(1)
 
+
 # pull out the emergency contact without the label
 def extract_emergency_contact(s):
     contact_name_string = re.search(r'Emergency Contact:\s*([\w\s]+)?', s)
-    return contact_name_string.group(1)
+    if contact_name_string:
+        return contact_name_string.group(1)
+    else:
+        return "Unknown"
 
 
 # pull out the e-contact's phone number and send it to the phone formatter, without the label
 def extract_emergency_contact_phone_number(s):
     if s:
         phone_number_string = re.search(r'Emergency Contact Phone Number:\s*([\d-]{10})', s)
-        phone_number_start_index = s.find(phone_number_string.group(1))
-        phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
-        return phone_number
+        if phone_number_string:
+            phone_number_start_index = s.find(phone_number_string.group(1))
+            phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
+            return phone_number
+        else: "NA"
     else:
         return "Unknown"
 
@@ -151,19 +158,21 @@ def summarizetbl():
 # USER MODIFY: Input files defined
 # #####################################################################################
 myDirectory = 'C:/Users/chris/Downloads/'
-fileName = 'items-2023-04-20-2023-06-01'
+fileName = 'items-2023-05-31-2023-09-29'
 
 myInputFile = f'{myDirectory}{fileName}.csv'
 
+# If you want to filter the file, enter the name of the event(s) here.  Item name (without Scout/Scouter designation)
 filterChoice1 = 'End of Year Pool Party 2023'
-filterChoice2 = ''
+filterChoice2 = 'Aquatics Campout - September 2023'
 
-# eventName = 'Camp Alexander 2023'
-eventName = 'May 2023 Pool Party'
+# eventName is essentially the prefix on your file name
+eventName = 'Aquatics Sep 2023'
 
 # output variables to set whether you want CSV and or Excel.  Excel is formatted.
 outputTypeCSV = False
 outputTypeExcel = True
+applyfilter = False
 
 # the filteredFileOut variable determines if you want a separate scout and scouter file for research.
 # This is used for testing changes
@@ -183,11 +192,12 @@ current_date_time = format(datetime.datetime.now().strftime("%Y-%m-%d-%H.%M"))
 column_list = ['Date', 'Time', 'Item',
                'Qty', 'Price_Point_Name', 'Net_Sales',
                'Customer_Name', 'Attendee Name',
+               'AttendLastName', 'AttendFirstName',
                'Scout Rank', 'Patrol',
                'Driving Status', 'Emergency Contact',
                'Emergency Contact Phone Number']
 column_list2 = ['Qty']
-patrol_categories = ['Green Frogs', 'Cobras', 'Pedros', 'Vikings', 'Rocking Chair']
+patrol_categories = ['Green Frogs', 'Cobras', 'Pedros', 'Vikings', 'Rocking Chair', 'Unknown']
 
 # #####################################################################################
 # Unit testing here
@@ -219,12 +229,9 @@ df = pd.read_csv(myInputFile, header=0)
 df = df.dropna(axis=1, how='all')
 df.columns = [re.sub("[ ,-]", "_", re.sub("[.,`]", "", c)) for c in df.columns]
 
-
 df['Customer_Name'] = df['Customer_Name'].fillna('Unknown')
-# df['Customer_Name'] = df['Customer_Name'].astype(str)
 df[['CustFirstName', 'CustMiddleName', 'CustLastName']] = df['Customer_Name'].apply(split_name)
 
-# df[['CustFirstName', 'CustMiddleName', 'CustLastName']] = df['Customer_Name'].apply(parse_name)
 df['Item'] = df['Item'].replace('\n', " ", regex=True)
 df['Item'] = df['Item'].apply(get_event)
 
@@ -234,9 +241,9 @@ df['Item'] = df['Item'].apply(get_event)
 # Sort by sales item and last name of customer// Create Sorted File
 # #####################################################################################
 
-df.sort_values(by=['Item', 'Price_Point_Name', 'CustLastName'], inplace=True,
-               key=lambda col: col.str.lower())
-
+# df.sort_values(by=['Item', 'Price_Point_Name', 'CustLastName'], inplace=True,
+#                key=lambda col: col.str.lower())
+#
 # Add new columns to dataframe using the functions
 try:
     df['Emergency Contact Phone Number'] = df['Modifiers_Applied'].apply(extract_emergency_contact_phone_number)
@@ -248,20 +255,27 @@ try:
 except:
     df['Emergency Contact'] = 'NA'
 
-try:
-    df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
-except:
-    df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_abbrev_name)
+df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
+
+df[['AttendFirstName', 'AttendMiddleName', 'AttendLastName']] = df['Modifiers_Applied'].apply(split_name)
 
 df['Driving Status'] = df['Modifiers_Applied'].apply(extract_driving_permission)
 df['Cell Phone Number'] = df['Modifiers_Applied'].apply(extract_cell_phone_number)
-df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol)
+df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol).fillna("Unknown")
 df['Patrol'] = df['Patrol'].str.strip()
 df['Scout Rank'] = df['Modifiers_Applied'].apply(extract_scout_rank)
 df['Scout Rank'] = df['Scout Rank'].str.strip()
 
-filtersused = [filterChoice1, filterChoice2]
-df = df[df['Item'].isin(filtersused)]
+# #####################################################################################
+# Sort by sales item and last name of attendee // Create sorted file
+# #####################################################################################
+
+df.sort_values(by=['Item', 'Price_Point_Name', 'AttendLastName', 'AttendFirstName'], inplace=True,
+               key=lambda col: col.str.lower())
+
+if applyfilter:
+    filtersused = [filterChoice1, filterChoice2]
+    df = df[df['Item'].isin(filtersused)]
 
 # df.to_csv(f'{mySortedFile}.csv')
 
@@ -270,13 +284,12 @@ df = df[df['Item'].isin(filtersused)]
 # Now using sorted dataframe/file for the rest of the process
 # #####################################################################################
 
-
-if filteredFileOut is True:
+if filteredFileOut:
     filterfiles()
 
 registrationFull = f'{myDirectory}{eventName}_Registered_as_of_{current_date_time}'
 
-if outputTypeCSV is True:
+if outputTypeCSV:
     df.to_csv(f'{registrationFull}.csv', index=False, columns=column_list)
     logging.info('CSV output is on in ' + myDirectory)
 else:
@@ -289,7 +302,7 @@ df2 = pd.DataFrame(suminfo, columns=column_names)
 df2.index = ['Total Attendees']
 print(df2)
 
-if outputTypeExcel is True:
+if outputTypeExcel:
     writer = pd.ExcelWriter(f'{registrationFull}.xlsx', engine='xlsxwriter')
     df.to_excel(writer, sheet_name='SignUps', index=False, startcol=0, startrow=0, columns=column_list)
     df['Patrol'] = pd.Categorical(df['Patrol'], categories=patrol_categories)
@@ -309,7 +322,7 @@ if outputTypeExcel is True:
     worksheet.set_column('G:I', 25)
     worksheet.set_column('J:K', 23)
     worksheet.set_column('L:L', 25)
-    worksheet.set_column('M:M', 28)
+    worksheet.set_column('M:O', 28)
     worksheet2.set_column('A:A', 35)
     worksheet2.set_column('B:B', 20)
     worksheet2.set_column('C:C', 15)
