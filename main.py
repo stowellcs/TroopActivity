@@ -99,7 +99,8 @@ def extract_emergency_contact_phone_number(s):
             phone_number_start_index = s.find(phone_number_string.group(1))
             phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
             return phone_number
-        else: "NA"
+        else:
+            return "NA"
     else:
         return "Unknown"
 
@@ -257,11 +258,11 @@ except:
 
 df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
 
-df[['AttendFirstName', 'AttendMiddleName', 'AttendLastName']] = df['Modifiers_Applied'].apply(split_name)
+df[['AttendFirstName', 'AttendMiddleName', 'AttendLastName']] = df['Attendee Name'].apply(split_name)
 
 df['Driving Status'] = df['Modifiers_Applied'].apply(extract_driving_permission)
 df['Cell Phone Number'] = df['Modifiers_Applied'].apply(extract_cell_phone_number)
-df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol).fillna("Unknown")
+df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol).fillna('Unknown')
 df['Patrol'] = df['Patrol'].str.strip()
 df['Scout Rank'] = df['Modifiers_Applied'].apply(extract_scout_rank)
 df['Scout Rank'] = df['Scout Rank'].str.strip()
