@@ -3,6 +3,34 @@ import re
 import datetime
 import logging
 
+# #####################################################################################
+# USER MODIFY: Input files defined
+# #####################################################################################
+myDirectory = 'C:/Users/.../Downloads/'
+fileName = 'items-2023-01-01-2024-01-01'
+# fileName = 'items-2023-09-01-2024-01-01'
+
+# If you want to filter the file, enter the name of the event(s) here.
+# Item name (without Scout/Scouter designation)
+# Optional if you
+filterChoice1 = '2023 Fall Family Banquet and COH'
+filterChoice2 = ''
+
+# eventName is essentially the prefix on your file name
+eventName = 'Misc 2023'
+
+# Output variables
+# Set outputTypeCSV to True if want a CSV file
+# Set outputTypeExcel to True for a formatted spreadsheet
+# set applyfilter to True if you want to limit your output to just the filterChoice1/2
+outputTypeCSV = False
+outputTypeExcel = True
+applyfilter = True
+
+# the filteredFileOut variable determines if you want a separate scout and scouter file for research.
+# This is used for testing changes
+filteredFileOut = False
+
 
 # if you want a different format for the phone numbers, change it here
 def fmt_phone_number(s):
@@ -63,15 +91,17 @@ def parse_name(name):
 
 # find the attendee's name in the file and return it without the label
 def extract_attendee_name(s):
-    scout_name = re.search(r'Scout Name:\s*(\w+\s+\w+)', s)
-    scouter_name = re.search(r'Scouter Name:\s*(\w+\s+\w+)', s)
-    if scout_name:
-        return scout_name.group(1)
-    elif scouter_name:
-        return scouter_name.group(1)
+    if s != 'Unknown':
+        scout_name = re.search(r'Scout Name:\s*(\w+\s+\w+)', s)
+        scouter_name = re.search(r'Scouter Name:\s*(\w+\s+\w+)', s)
+        if scout_name:
+            return scout_name.group(1)
+        elif scouter_name:
+            return scouter_name.group(1)
+        else:
+            return extract_abbrev_name(s)
     else:
-        return extract_abbrev_name(s)
-
+        return "N/A"
 
 def extract_abbrev_name(s):
     scout_name = re.search(r'Scout Name:\s*(\w+)', s)
@@ -100,7 +130,7 @@ def extract_emergency_contact_phone_number(s):
             phone_number = fmt_phone_number(s[phone_number_start_index:phone_number_start_index + 10])
             return phone_number
         else:
-            return "NA"
+            return "N/A"
     else:
         return "Unknown"
 
@@ -111,6 +141,8 @@ def extract_driving_permission(s):
         return 'Yes-Driving'
     elif 'Yes - carpool' in s:
         return 'Yes-Carpool'
+    elif s == "Unknown":
+        return 'N/A'
     else:
         return 'No'
 
@@ -136,6 +168,8 @@ def extract_scout_patrol(s):
         for g in patrols:
             if g in parts:
                 return g
+    elif s == 'Unknown':
+        return 'Unknown'
     else:
         return 'Rocking Chair'
 
@@ -150,38 +184,16 @@ def filterfiles():
 
 # I put the summary table definition here
 def summarizetbl():
-    dfsumgrp = df.groupby(['Item', 'Driving Status', 'Patrol']).count()
-    dfsum2grp = df.groupby(['Item', 'Patrol']).count()
+    dfsumgrp = df.groupby(['Item', 'Driving Status', 'Patrol'], observed=False).count()
+    dfsum2grp = df.groupby(['Item', 'Patrol'], observed=False).count()
     return dfsumgrp, dfsum2grp
 
 
 # #####################################################################################
-# USER MODIFY: Input files defined
-# #####################################################################################
-myDirectory = 'C:/Users/chris/Downloads/'
-fileName = 'items-2023-05-31-2023-09-29'
-
-myInputFile = f'{myDirectory}{fileName}.csv'
-
-# If you want to filter the file, enter the name of the event(s) here.  Item name (without Scout/Scouter designation)
-filterChoice1 = 'End of Year Pool Party 2023'
-filterChoice2 = 'Aquatics Campout - September 2023'
-
-# eventName is essentially the prefix on your file name
-eventName = 'Aquatics Sep 2023'
-
-# output variables to set whether you want CSV and or Excel.  Excel is formatted.
-outputTypeCSV = False
-outputTypeExcel = True
-applyfilter = False
-
-# the filteredFileOut variable determines if you want a separate scout and scouter file for research.
-# This is used for testing changes
-filteredFileOut = False
-
-# #####################################################################################
 # File Names - Various Steps
 # #####################################################################################
+myInputFile = f'{myDirectory}{fileName}.csv'
+
 mySortedFile = f'{myInputFile}_sorted.csv'
 
 filteredFile1 = f'{myDirectory}{filterChoice1}.csv'
@@ -230,25 +242,24 @@ df = pd.read_csv(myInputFile, header=0)
 df = df.dropna(axis=1, how='all')
 df.columns = [re.sub("[ ,-]", "_", re.sub("[.,`]", "", c)) for c in df.columns]
 
+df['Modifiers_Applied'] = df['Modifiers_Applied'].fillna('Unknown')
 df['Customer_Name'] = df['Customer_Name'].fillna('Unknown')
 df[['CustFirstName', 'CustMiddleName', 'CustLastName']] = df['Customer_Name'].apply(split_name)
 
 df['Item'] = df['Item'].replace('\n', " ", regex=True)
 df['Item'] = df['Item'].apply(get_event)
 
-# df.to_csv(f'{myDirectory}test.csv')
+df.to_csv(f'{myDirectory}test.csv')
 
 # #####################################################################################
-# Sort by sales item and last name of customer// Create Sorted File
+# Parse the Modifiers_Applied field
 # #####################################################################################
 
-# df.sort_values(by=['Item', 'Price_Point_Name', 'CustLastName'], inplace=True,
-#                key=lambda col: col.str.lower())
-#
 # Add new columns to dataframe using the functions
 try:
     df['Emergency Contact Phone Number'] = df['Modifiers_Applied'].apply(extract_emergency_contact_phone_number)
 except:
+    print("error in ECPN")
     df['Emergency Contact Phone Number'] = 'NA'
 
 try:
@@ -260,15 +271,30 @@ df['Attendee Name'] = df['Modifiers_Applied'].apply(extract_attendee_name)
 
 df[['AttendFirstName', 'AttendMiddleName', 'AttendLastName']] = df['Attendee Name'].apply(split_name)
 
-df['Driving Status'] = df['Modifiers_Applied'].apply(extract_driving_permission)
-df['Cell Phone Number'] = df['Modifiers_Applied'].apply(extract_cell_phone_number)
-df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol).fillna('Unknown')
-df['Patrol'] = df['Patrol'].str.strip()
-df['Scout Rank'] = df['Modifiers_Applied'].apply(extract_scout_rank)
-df['Scout Rank'] = df['Scout Rank'].str.strip()
+try:
+    df['Driving Status'] = df['Modifiers_Applied'].apply(extract_driving_permission)
+except:
+    df['Driving Status'] = 'N/A'
 
+try:
+    df['Cell Phone Number'] = df['Modifiers_Applied'].apply(extract_cell_phone_number)
+except:
+    df['Cell Phone Number'] = 'N/A'
+
+try:
+    df['Patrol'] = df['Modifiers_Applied'].apply(extract_scout_patrol).fillna('Unknown')
+    df['Patrol'] = df['Patrol'].str.strip()
+except:
+    print("error in patrol")
+    # df['Patrol'] = 'N/A'
+
+try:
+    df['Scout Rank'] = df['Modifiers_Applied'].apply(extract_scout_rank)
+    df['Scout Rank'] = df['Scout Rank'].str.strip()
+except:
+    df['Scout Rank'] = 'N/A'
 # #####################################################################################
-# Sort by sales item and last name of attendee // Create sorted file
+# Sort by sales item and last name of attendee // Create filtered file, if True
 # #####################################################################################
 
 df.sort_values(by=['Item', 'Price_Point_Name', 'AttendLastName', 'AttendFirstName'], inplace=True,
@@ -278,6 +304,7 @@ if applyfilter:
     filtersused = [filterChoice1, filterChoice2]
     df = df[df['Item'].isin(filtersused)]
 
+# uncomment if you want the intermediate file of filtered records
 # df.to_csv(f'{mySortedFile}.csv')
 
 
